@@ -11,6 +11,9 @@ This is a QOL fork made for training guided-diffusion models on google colab (an
 
 ## Changelog
 
+### 07.08.2022
+- Wandb integration
+
 ### 19.05.2022
 - Add colab 
 

@@ -3,6 +3,7 @@ Train a diffusion model on images.
 """
 
 import argparse, os
+import wandb
 
 from guided_diffusion import logger
 from guided_diffusion.image_datasets import load_data
@@ -15,19 +16,25 @@ from guided_diffusion.script_util import (
 )
 from guided_diffusion.train_util import TrainLoop
 
-device = 'cuda'
+device = "cuda"
+
 
 def main():
     args = create_argparser().parse_args()
-    if args.logdir != '':
-        os.environ['OPENAI_LOGDIR'] = args.logdir
-        print('set output to ',os.environ['OPENAI_LOGDIR'])
+    if args.logdir != "":
+        os.environ["OPENAI_LOGDIR"] = args.logdir
+        print("set output to ", os.environ["OPENAI_LOGDIR"])
     logger.configure()
 
+    wandb_run = None
+    if args.wandb_project != "":
+        wandb_run = wandb.init(project=args.wandb_project, entity=args.wandb_entity, name=args.wandb_name)
+        logger.log(f"wandb init. project: {args.wandb_project}, entity: {args.wandb_entity}, name: {args.wandb_name}")
+    else:
+        logger.log("wandb info not specified")
+
     logger.log("creating model and diffusion...")
-    model, diffusion = create_model_and_diffusion(
-        **args_to_dict(args, model_and_diffusion_defaults().keys())
-    )
+    model, diffusion = create_model_and_diffusion(**args_to_dict(args, model_and_diffusion_defaults().keys()))
     model.to(device)
     schedule_sampler = create_named_schedule_sampler(args.schedule_sampler, diffusion)
 
@@ -56,6 +63,7 @@ def main():
         schedule_sampler=schedule_sampler,
         weight_decay=args.weight_decay,
         lr_anneal_steps=args.lr_anneal_steps,
+        wandb_run=wandb_run,
     ).run_loop()
 
 
@@ -74,7 +82,10 @@ def create_argparser():
         resume_checkpoint="",
         use_fp16=False,
         fp16_scale_growth=1e-3,
-        logdir = ''
+        logdir="",
+        wandb_project="",
+        wandb_entity="",
+        wandb_name="",
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
