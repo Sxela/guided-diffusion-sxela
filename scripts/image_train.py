@@ -86,7 +86,7 @@ def create_argparser():
         wandb_project="",
         wandb_entity="",
         wandb_name="",
-        resume_run=False,
+        resume_run=True,
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
