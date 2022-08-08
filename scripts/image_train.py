@@ -28,7 +28,7 @@ def main():
 
     wandb_run = None
     if args.wandb_project != "":
-        wandb_run = wandb.init(project=args.wandb_project, entity=args.wandb_entity, name=args.wandb_name)
+        wandb_run = wandb.init(project=args.wandb_project, entity=args.wandb_entity, name=args.wandb_name, resume=args.resume_run)
         logger.log(f"wandb init. project: {args.wandb_project}, entity: {args.wandb_entity}, name: {args.wandb_name}")
     else:
         logger.log("wandb info not specified")
@@ -86,6 +86,7 @@ def create_argparser():
         wandb_project="",
         wandb_entity="",
         wandb_name="",
+        resume_run=False,
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
