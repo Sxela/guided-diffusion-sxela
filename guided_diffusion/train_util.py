@@ -258,7 +258,9 @@ def find_ema_checkpoint(main_checkpoint, step, rate):
 
 def log_loss_dict(diffusion, ts, losses, step=0):
     for key, values in losses.items():
-        logger.logkv_mean(key, values.mean().item())
+        mean_value = values.mean().item()
+        logger.logkv_mean(key, mean_value)
+        wandb.log({f"{key}": mean_value}, step=step)
         # Log the quantiles (four quartiles, in particular).
         for sub_t, sub_loss in zip(ts.cpu().numpy(), values.detach().cpu().numpy()):
             quartile = int(4 * sub_t / diffusion.num_timesteps)
