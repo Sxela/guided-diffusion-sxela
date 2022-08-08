@@ -10,7 +10,7 @@ from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 from torch.optim import AdamW
 
 from . import logger
-from .fp16_util import MixedPrecisionTrainer, global_step
+from .fp16_util import MixedPrecisionTrainer
 from .nn import update_ema
 from .resample import LossAwareSampler, UniformSampler
 
@@ -122,8 +122,6 @@ class TrainLoop:
             self.opt.load_state_dict(state_dict)
 
     def run_loop(self):
-        global global_step
-
         while not self.lr_anneal_steps or self.step + self.resume_step < self.lr_anneal_steps:
             batch, cond = next(self.data)
             self.run_step(batch, cond)
@@ -135,14 +133,13 @@ class TrainLoop:
                 if os.environ.get("DIFFUSION_TRAINING_TEST", "") and self.step > 0:
                     return
             self.step += 1
-            global_step += 1
         # Save the last checkpoint if it wasn't already saved.
         if (self.step - 1) % self.save_interval != 0:
             self.save()
 
     def run_step(self, batch, cond):
         self.forward_backward(batch, cond)
-        took_step = self.mp_trainer.optimize(self.opt)
+        took_step = self.mp_trainer.optimize(self.opt, self.step)
         if took_step:
             self._update_ema()
         self._anneal_lr()
@@ -174,7 +171,7 @@ class TrainLoop:
                 self.schedule_sampler.update_with_local_losses(t, losses["loss"].detach())
 
             loss = (losses["loss"] * weights).mean()
-            log_loss_dict(self.diffusion, t, {k: v * weights for k, v in losses.items()})
+            log_loss_dict(self.diffusion, t, {k: v * weights for k, v in losses.items()}, self.step)
             self.mp_trainer.backward(loss)
 
     def _update_ema(self):
@@ -259,12 +256,11 @@ def find_ema_checkpoint(main_checkpoint, step, rate):
     return None
 
 
-def log_loss_dict(diffusion, ts, losses):
-    global global_step
+def log_loss_dict(diffusion, ts, losses, step=0):
     for key, values in losses.items():
         logger.logkv_mean(key, values.mean().item())
         # Log the quantiles (four quartiles, in particular).
         for sub_t, sub_loss in zip(ts.cpu().numpy(), values.detach().cpu().numpy()):
             quartile = int(4 * sub_t / diffusion.num_timesteps)
             logger.logkv_mean(f"{key}_q{quartile}", sub_loss)
-            wandb.log({f"{key}_q{quartile}": sub_loss}, step=global_step)
+            wandb.log({f"{key}_q{quartile}": sub_loss}, step=step)
