@@ -10,7 +10,7 @@ from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 from torch.optim import AdamW
 
 from . import logger
-from .fp16_util import MixedPrecisionTrainer
+from .fp16_util import MixedPrecisionTrainer, global_step
 from .nn import update_ema
 from .resample import LossAwareSampler, UniformSampler
 
@@ -122,6 +122,8 @@ class TrainLoop:
             self.opt.load_state_dict(state_dict)
 
     def run_loop(self):
+        global global_step
+
         while not self.lr_anneal_steps or self.step + self.resume_step < self.lr_anneal_steps:
             batch, cond = next(self.data)
             self.run_step(batch, cond)
@@ -133,6 +135,7 @@ class TrainLoop:
                 if os.environ.get("DIFFUSION_TRAINING_TEST", "") and self.step > 0:
                     return
             self.step += 1
+            global_step += 1
         # Save the last checkpoint if it wasn't already saved.
         if (self.step - 1) % self.save_interval != 0:
             self.save()
@@ -189,7 +192,7 @@ class TrainLoop:
     def log_step(self):
         logger.logkv("step", self.step + self.resume_step)
         logger.logkv("samples", (self.step + self.resume_step + 1) * self.global_batch)
-        wandb.log({"step": self.step + self.resume_step, "samples": (self.step + self.resume_step + 1) * self.global_batch})
+        wandb.log({"samples": (self.step + self.resume_step + 1) * self.global_batch}, step=self.step)
 
     def save(self):
         def save_checkpoint(rate, params):
@@ -257,10 +260,11 @@ def find_ema_checkpoint(main_checkpoint, step, rate):
 
 
 def log_loss_dict(diffusion, ts, losses):
+    global global_step
     for key, values in losses.items():
         logger.logkv_mean(key, values.mean().item())
         # Log the quantiles (four quartiles, in particular).
         for sub_t, sub_loss in zip(ts.cpu().numpy(), values.detach().cpu().numpy()):
             quartile = int(4 * sub_t / diffusion.num_timesteps)
             logger.logkv_mean(f"{key}_q{quartile}", sub_loss)
-            wandb.log({f"{key}_q{quartile}": sub_loss})
+            wandb.log({f"{key}_q{quartile}": sub_loss}, step=global_step)

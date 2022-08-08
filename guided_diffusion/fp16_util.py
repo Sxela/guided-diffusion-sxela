@@ -11,6 +11,7 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from . import logger
 
 INITIAL_LOG_LOSS_SCALE = 20.0
+global_step = 0
 
 
 def convert_module_to_f16(l):
@@ -168,8 +169,9 @@ class MixedPrecisionTrainer:
             return self._optimize_normal(opt)
 
     def _optimize_fp16(self, opt: th.optim.Optimizer):
+        global global_step
         logger.logkv_mean("lg_loss_scale", self.lg_loss_scale)
-        wandb.log({"lg_loss_scale": self.lg_loss_scale})
+        wandb.log({"lg_loss_scale": self.lg_loss_scale}, step=global_step)
         model_grads_to_master_grads(self.param_groups_and_shapes, self.master_params)
         grad_norm, param_norm = self._compute_norms(grad_scale=2**self.lg_loss_scale)
         if check_overflow(grad_norm):
@@ -180,7 +182,7 @@ class MixedPrecisionTrainer:
 
         logger.logkv_mean("grad_norm", grad_norm)
         logger.logkv_mean("param_norm", param_norm)
-        wandb.log({"grad_norm": grad_norm, "param_norm": param_norm})
+        wandb.log({"grad_norm": grad_norm, "param_norm": param_norm}, step=global_step)
 
         for p in self.master_params:
             p.grad.mul_(1.0 / (2**self.lg_loss_scale))
@@ -191,10 +193,11 @@ class MixedPrecisionTrainer:
         return True
 
     def _optimize_normal(self, opt: th.optim.Optimizer):
+        global global_step
         grad_norm, param_norm = self._compute_norms()
         logger.logkv_mean("grad_norm", grad_norm)
         logger.logkv_mean("param_norm", param_norm)
-        wandb.log({"grad_norm": grad_norm, "param_norm": param_norm})
+        wandb.log({"grad_norm": grad_norm, "param_norm": param_norm}, step=global_step)
         opt.step()
         return True
 
